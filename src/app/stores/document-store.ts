@@ -34,11 +34,11 @@ interface DocumentStore {
   // Utilities
   getSupportedFormats: () => string[];
   validateFiles: (files: File[]) => { valid: File[]; invalid: File[]; errors: string[] };
+  getOutputFormat: () => { format: DocumentFormat; reason: string };
 }
 
 const defaultMergeOptions: MergeOptions = {
   mode: 'sequential',
-  outputFormat: 'pdf',
   outputName: 'merged-document',
   preserveMetadata: true,
   preserveFormatting: true,
@@ -169,11 +169,14 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
 
   // Processing
   startProcessing: async () => {
-    const { documents, mergeOptions } = get();
+    const { documents, mergeOptions, getOutputFormat } = get();
 
     if (documents.length === 0) {
       throw new Error('No documents to process');
     }
+
+    // Determine output format automatically
+    const { format: outputFormat, reason } = getOutputFormat();
 
     const job: ProcessingJob = {
       id: generateDocumentId(),
@@ -199,22 +202,36 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       }, {} as Record<DocumentFormat, DocumentFile[]>);
 
       let result;
-      const formats = Object.keys(documentsByFormat) as DocumentFormat[];
+      const inputFormats = Object.keys(documentsByFormat) as DocumentFormat[];
 
-      if (formats.length === 1) {
-        // Single format merge
-        const format = formats[0];
+      if (outputFormat === 'pdf' && (inputFormats.length > 1 || (inputFormats.length === 1 && inputFormats[0] === 'docx' && documents.length > 1))) {
+        // Convert all documents to PDF and merge
+        result = await DocumentProcessor.convertAndMergeToPDF(
+          documents.map(doc => ({ file: doc.file, format: doc.format })), 
+          mergeOptions as unknown as Record<string, unknown>
+        );
+      } else if (inputFormats.length === 1 && inputFormats[0] === outputFormat) {
+        // Single format merge, no conversion needed
+        const format = inputFormats[0];
         const files = documentsByFormat[format].map(doc => doc.file);
         result = await DocumentProcessor.mergeDocuments(files, format, mergeOptions as unknown as Record<string, unknown>);
       } else {
-        // Multi-format merge (convert to PDF first)
-        throw new Error('Multi-format merging requires format conversion (coming soon)');
+        throw new Error(`Format conversion to ${outputFormat} not yet supported for this combination`);
       }
 
       if (result.success && result.data) {
-        // Create download URL
+        // Create download URL with proper MIME type
+        const mimeTypes = {
+          'pdf': 'application/pdf',
+          'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'txt': 'text/plain',
+          'csv': 'text/csv',
+          'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        };
+
         const blob = new Blob([result.data as BlobPart], {
-          type: mergeOptions.outputFormat === 'pdf' ? 'application/pdf' : 'application/octet-stream'
+          type: mimeTypes[outputFormat] || 'application/octet-stream'
         });
         const resultUrl = URL.createObjectURL(blob);
 
@@ -225,6 +242,8 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
             progress: 100,
             completedAt: new Date(),
             resultUrl,
+            outputFormat,
+            formatReason: reason,
           } : null,
           isProcessing: false,
         }));
@@ -275,5 +294,39 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     });
 
     return { valid, invalid, errors };
+  },
+
+  getOutputFormat: () => {
+    const { documents } = get();
+    
+    if (documents.length === 0) {
+      return { format: 'pdf' as DocumentFormat, reason: 'No documents selected' };
+    }
+
+    const formats = [...new Set(documents.map(doc => doc.format))];
+    
+    // If all documents are the same format
+    if (formats.length === 1) {
+      const format = formats[0];
+      
+      // Special case: Multiple DOCX files should be converted to PDF for better merging
+      if (format === 'docx' && documents.length > 1) {
+        return { 
+          format: 'pdf' as DocumentFormat, 
+          reason: 'Multiple Word documents will be merged as PDF to preserve formatting' 
+        };
+      }
+      
+      return { 
+        format, 
+        reason: `Single format detected: ${format.toUpperCase()}` 
+      };
+    }
+    
+    // Multiple formats - always convert to PDF
+    return { 
+      format: 'pdf' as DocumentFormat, 
+      reason: 'Mixed document formats will be merged as PDF for compatibility' 
+    };
   },
 }));

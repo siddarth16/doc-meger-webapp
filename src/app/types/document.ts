@@ -27,7 +27,6 @@ export type MergeMode = 'sequential' | 'smart' | 'custom';
 
 export interface MergeOptions {
   mode: MergeMode;
-  outputFormat: DocumentFormat;
   outputName: string;
   preserveMetadata: boolean;
   preserveFormatting: boolean;
@@ -47,6 +46,8 @@ export interface ProcessingJob {
   createdAt: Date;
   completedAt?: Date;
   resultUrl?: string;
+  outputFormat?: DocumentFormat;
+  formatReason?: string;
   error?: string;
 }
 

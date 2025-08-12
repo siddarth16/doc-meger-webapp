@@ -206,6 +206,106 @@ export class DocumentProcessor {
     }
   }
 
+  static async convertAndMergeToPDF(
+    documents: { file: File; format: DocumentFormat }[],
+    options: Record<string, unknown> = {}
+  ): Promise<ProcessorResult> {
+    try {
+      const pdfBuffers: ArrayBuffer[] = [];
+      
+      for (const doc of documents) {
+        if (doc.format === 'pdf') {
+          // Already PDF, just add the buffer
+          const buffer = await fileToBuffer(doc.file);
+          pdfBuffers.push(buffer);
+        } else if (doc.format === 'docx') {
+          // Convert DOCX to PDF-like content (enhanced approach)
+          const pdfBuffer = await this.convertDocxToPDF(doc.file);
+          pdfBuffers.push(pdfBuffer);
+        } else if (doc.format === 'txt') {
+          // Convert text to PDF
+          const text = await doc.file.text();
+          const pdfBuffer = await this.convertTextToPDF(text);
+          pdfBuffers.push(pdfBuffer);
+        } else {
+          // For other formats, throw error for now
+          throw new Error(`Conversion from ${doc.format} to PDF not yet supported`);
+        }
+      }
+      
+      // Merge all PDF buffers
+      return await PDFProcessor.mergePDFs(pdfBuffers, {
+        preserveMetadata: options.preserveMetadata === true,
+        includeBookmarks: options.preserveFormatting === true,
+      });
+      
+    } catch (error) {
+      console.error('Convert and merge to PDF error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown conversion error'
+      };
+    }
+  }
+
+  static async convertDocxToPDF(file: File): Promise<ArrayBuffer> {
+    try {
+      // Extract text and basic formatting from DOCX
+      const buffer = await fileToBuffer(file);
+      const htmlContent = await WordProcessor.extractHTML(buffer);
+      
+      // Convert HTML to PDF using PDF-lib
+      // This is a simplified approach - for better results, we'd need a proper HTML-to-PDF library
+      const text = htmlContent
+        .replace(/<[^>]+>/g, '\n')
+        .replace(/\n\s*\n/g, '\n\n')
+        .trim();
+        
+      return await this.convertTextToPDF(text);
+    } catch (error) {
+      console.error('DOCX to PDF conversion error:', error);
+      throw error;
+    }
+  }
+
+  static async convertTextToPDF(text: string): Promise<ArrayBuffer> {
+    try {
+      // Create a simple PDF from text using PDF-lib
+      const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+      
+      const pdfDoc = await PDFDocument.create();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      
+      const lines = text.split('\n');
+      const linesPerPage = 50;
+      const lineHeight = 12;
+      const margin = 50;
+      const pageWidth = 595.28; // A4 width in points
+      const pageHeight = 841.89; // A4 height in points
+      
+      for (let i = 0; i < lines.length; i += linesPerPage) {
+        const page = pdfDoc.addPage([pageWidth, pageHeight]);
+        const pageLines = lines.slice(i, i + linesPerPage);
+        
+        pageLines.forEach((line, index) => {
+          page.drawText(line, {
+            x: margin,
+            y: pageHeight - margin - (index * lineHeight),
+            size: 10,
+            font,
+            color: rgb(0, 0, 0),
+          });
+        });
+      }
+      
+      const pdfBytes = await pdfDoc.save();
+      return pdfBytes.buffer as ArrayBuffer;
+    } catch (error) {
+      console.error('Text to PDF conversion error:', error);
+      throw error;
+    }
+  }
+
   static getSupportedMergeFormats(): DocumentFormat[] {
     return ['pdf', 'docx', 'xlsx', 'txt', 'csv'];
   }
@@ -213,10 +313,10 @@ export class DocumentProcessor {
   static getSupportedConversions(): Record<DocumentFormat, DocumentFormat[]> {
     return {
       pdf: [],
-      docx: ['txt'],
+      docx: ['txt', 'pdf'],
       xlsx: ['csv'],
       pptx: [],
-      txt: [],
+      txt: ['pdf'],
       csv: []
     };
   }

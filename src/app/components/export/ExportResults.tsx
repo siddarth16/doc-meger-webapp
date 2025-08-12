@@ -26,7 +26,7 @@ export function ExportResults() {
       // Create download link
       const link = document.createElement('a');
       link.href = currentJob.resultUrl;
-      link.download = `${currentJob.options.outputName}${getFileExtension(currentJob.options.outputFormat)}`;
+      link.download = `${currentJob.options.outputName}${getFileExtension(currentJob.outputFormat || 'pdf')}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -150,7 +150,7 @@ export function ExportResults() {
           
           <div className="text-center">
             <div className="text-2xl font-bold text-accent uppercase">
-              {currentJob.options.outputFormat}
+              {currentJob.outputFormat || 'pdf'}
             </div>
             <div className="text-gray-400 text-sm">Output Format</div>
           </div>
@@ -174,7 +174,7 @@ export function ExportResults() {
           <div className="flex justify-between">
             <span className="text-gray-400">Output Name:</span>
             <span className="text-foreground font-mono">
-              {currentJob.options.outputName}{getFileExtension(currentJob.options.outputFormat)}
+              {currentJob.options.outputName}{getFileExtension(currentJob.outputFormat || 'pdf')}
             </span>
           </div>
           
@@ -200,6 +200,15 @@ export function ExportResults() {
               {formatFileSize(currentJob.documents.reduce((sum, doc) => sum + doc.size, 0))}
             </span>
           </div>
+
+          {currentJob.formatReason && (
+            <div className="flex justify-between">
+              <span className="text-gray-400">Format Decision:</span>
+              <span className="text-foreground text-xs">
+                {currentJob.formatReason}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

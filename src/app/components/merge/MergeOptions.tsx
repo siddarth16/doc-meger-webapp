@@ -14,7 +14,7 @@ import { MergeMode, DocumentFormat } from '@/app/types';
 import { cn } from '@/app/lib/utils/cn';
 
 export function MergeOptions() {
-  const { documents, mergeOptions, setMergeOptions, startProcessing, isProcessing } = useDocumentStore();
+  const { documents, mergeOptions, setMergeOptions, startProcessing, isProcessing, getOutputFormat } = useDocumentStore();
   const { addNotification, setActiveTab } = useUIStore();
   
   const [isStarting, setIsStarting] = useState(false);
@@ -61,13 +61,8 @@ export function MergeOptions() {
     }
   ];
 
-  const outputFormats: { value: DocumentFormat; label: string; description: string }[] = [
-    { value: 'pdf', label: 'PDF', description: 'Universal document format' },
-    { value: 'docx', label: 'Word', description: 'Microsoft Word document' },
-    { value: 'xlsx', label: 'Excel', description: 'Microsoft Excel spreadsheet' },
-    { value: 'txt', label: 'Text', description: 'Plain text file' },
-    { value: 'csv', label: 'CSV', description: 'Comma-separated values' }
-  ];
+  // Get the automatic output format
+  const { format: outputFormat, reason: formatReason } = documents.length > 0 ? getOutputFormat() : { format: 'pdf' as DocumentFormat, reason: 'No documents selected' };
 
   const qualityOptions = [
     { value: 'low' as const, label: 'Low', description: 'Smaller file size' },
@@ -153,25 +148,26 @@ export function MergeOptions() {
         </div>
       </div>
 
-      {/* Output Format */}
+      {/* Automatic Output Format */}
       <div className="space-y-4">
         <h3 className="text-lg font-semibold text-foreground">Output Format</h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {outputFormats.map((format) => (
-            <button
-              key={format.value}
-              onClick={() => setMergeOptions({ outputFormat: format.value })}
-              className={cn(
-                'p-3 rounded-lg border transition-all duration-200 text-center',
-                mergeOptions.outputFormat === format.value
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border hover:border-primary/50 hover:bg-muted/30'
-              )}
-            >
-              <div className="font-medium text-sm">{format.label}</div>
-              <div className="text-xs text-gray-400 mt-1">{format.description}</div>
-            </button>
-          ))}
+        <div className="bg-muted/30 border border-border rounded-lg p-4">
+          <div className="flex items-center space-x-3">
+            <div className="bg-primary/20 p-2 rounded-lg">
+              <CheckIcon className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1">
+              <div className="font-medium text-foreground">
+                {outputFormat.toUpperCase()} Format
+              </div>
+              <div className="text-sm text-gray-400 mt-1">
+                {formatReason}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="text-xs text-gray-500">
+          ℹ️ Output format is automatically determined based on your documents for optimal compatibility
         </div>
       </div>
 
@@ -276,12 +272,32 @@ export function MergeOptions() {
       </div>
 
       {/* Formatting Notice */}
-      {mergeOptions.preserveFormatting && mergeOptions.outputFormat === 'docx' && (
+      {mergeOptions.preserveFormatting && outputFormat === 'docx' && (
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
           <h4 className="font-medium text-yellow-400 mb-2">⚠️ Formatting Notice</h4>
           <p className="text-sm text-yellow-300">
             For best formatting preservation with DOCX files, consider converting them to PDF first. 
             Direct DOCX merging will preserve basic text structure but may not maintain complex formatting, styles, or embedded objects.
+          </p>
+        </div>
+      )}
+
+      {/* Multi-DOCX to PDF Notice */}
+      {documents.filter(doc => doc.format === 'docx').length > 1 && outputFormat === 'pdf' && (
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+          <h4 className="font-medium text-blue-400 mb-2">📄 DOCX to PDF Conversion</h4>
+          <p className="text-sm text-blue-300">
+            Multiple Word documents detected. They will be converted to PDF format during merging to ensure optimal formatting preservation and compatibility.
+          </p>
+        </div>
+      )}
+
+      {/* Mixed Formats Notice */}
+      {new Set(documents.map(doc => doc.format)).size > 1 && outputFormat === 'pdf' && (
+        <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
+          <h4 className="font-medium text-purple-400 mb-2">🔄 Format Conversion</h4>
+          <p className="text-sm text-purple-300">
+            Mixed document formats detected. All documents will be converted to PDF format for seamless merging and maximum compatibility.
           </p>
         </div>
       )}
