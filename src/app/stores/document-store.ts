@@ -41,6 +41,7 @@ const defaultMergeOptions: MergeOptions = {
   outputFormat: 'pdf',
   outputName: 'merged-document',
   preserveMetadata: true,
+  preserveFormatting: true,
   quality: 'medium',
   pageBreaks: false,
   includeHeaders: false,

@@ -32,19 +32,31 @@ export class TextProcessor {
       let totalWordCount = 0;
 
       documents.forEach((text, index) => {
-        if (includeHeaders && index > 0) {
+        // Skip empty documents
+        if (!text || text.trim().length === 0) {
+          return;
+        }
+
+        if (includeHeaders && mergedContent.length > 0) {
           mergedContent += `\n\n=== Document ${index + 1} ===\n\n`;
         }
         
-        mergedContent += text;
-        
-        if (index < documents.length - 1) {
+        if (mergedContent.length > 0 && !includeHeaders) {
           mergedContent += separator;
         }
+        
+        mergedContent += text.trim();
 
         const words = text.split(/\s+/).filter(word => word.length > 0);
         totalWordCount += words.length;
       });
+
+      if (mergedContent.trim().length === 0) {
+        return {
+          success: false,
+          error: 'No text content found in any of the documents'
+        };
+      }
 
       const encoder = new TextEncoder();
       const data = encoder.encode(mergedContent);

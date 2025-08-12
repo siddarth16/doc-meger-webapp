@@ -225,7 +225,22 @@ export function MergeOptions() {
               onChange={(e) => setMergeOptions({ preserveMetadata: e.target.checked })}
               className="w-4 h-4 text-primary bg-muted border-border rounded focus:ring-primary focus:ring-2"
             />
-            <span className="text-foreground">Preserve metadata</span>
+            <span className="text-foreground">Preserve document metadata</span>
+          </label>
+
+          <label className="flex items-center space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={mergeOptions.preserveFormatting}
+              onChange={(e) => setMergeOptions({ preserveFormatting: e.target.checked })}
+              className="w-4 h-4 text-primary bg-muted border-border rounded focus:ring-primary focus:ring-2"
+            />
+            <div className="flex-1">
+              <span className="text-foreground">Preserve original formatting</span>
+              <p className="text-xs text-gray-400 mt-1">
+                For DOCX files: Converts to PDF for best formatting preservation. For other formats: Maintains source structure.
+              </p>
+            </div>
           </label>
 
           <label className="flex items-center space-x-3 cursor-pointer">
@@ -245,7 +260,7 @@ export function MergeOptions() {
               onChange={(e) => setMergeOptions({ includeHeaders: e.target.checked })}
               className="w-4 h-4 text-primary bg-muted border-border rounded focus:ring-primary focus:ring-2"
             />
-            <span className="text-foreground">Include headers</span>
+            <span className="text-foreground">Include document headers</span>
           </label>
 
           <label className="flex items-center space-x-3 cursor-pointer">
@@ -255,10 +270,21 @@ export function MergeOptions() {
               onChange={(e) => setMergeOptions({ includeFooters: e.target.checked })}
               className="w-4 h-4 text-primary bg-muted border-border rounded focus:ring-primary focus:ring-2"
             />
-            <span className="text-foreground">Include footers</span>
+            <span className="text-foreground">Include document footers</span>
           </label>
         </div>
       </div>
+
+      {/* Formatting Notice */}
+      {mergeOptions.preserveFormatting && mergeOptions.outputFormat === 'docx' && (
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+          <h4 className="font-medium text-yellow-400 mb-2">⚠️ Formatting Notice</h4>
+          <p className="text-sm text-yellow-300">
+            For best formatting preservation with DOCX files, consider converting them to PDF first. 
+            Direct DOCX merging will preserve basic text structure but may not maintain complex formatting, styles, or embedded objects.
+          </p>
+        </div>
+      )}
 
       {/* Start Processing Button */}
       <div className="pt-6 border-t border-border">

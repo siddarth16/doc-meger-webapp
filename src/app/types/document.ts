@@ -30,6 +30,7 @@ export interface MergeOptions {
   outputFormat: DocumentFormat;
   outputName: string;
   preserveMetadata: boolean;
+  preserveFormatting: boolean;
   quality: 'low' | 'medium' | 'high';
   customOrder?: string[];
   pageBreaks?: boolean;

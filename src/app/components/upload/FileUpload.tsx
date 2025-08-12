@@ -130,7 +130,12 @@ export function FileUpload() {
             variant="primary"
             size="lg"
             className="mt-4"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              // Trigger the file input click
+              const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+              if (input) input.click();
+            }}
           >
             Choose Files
           </Button>

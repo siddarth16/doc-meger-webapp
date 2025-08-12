@@ -91,7 +91,12 @@ export class DocumentProcessor {
       switch (format) {
         case 'pdf': {
           const buffers = await Promise.all(files.map(file => fileToBuffer(file)));
-          return await PDFProcessor.mergePDFs(buffers, options);
+          const preserveMetadata = options.preserveMetadata === true;
+          const includeBookmarks = options.preserveFormatting === true;
+          return await PDFProcessor.mergePDFs(buffers, {
+            preserveMetadata,
+            includeBookmarks,
+          });
         }
         case 'xlsx': {
           const buffers = await Promise.all(files.map(file => fileToBuffer(file)));
@@ -99,15 +104,40 @@ export class DocumentProcessor {
         }
         case 'docx': {
           const buffers = await Promise.all(files.map(file => fileToBuffer(file)));
-          return await WordProcessor.mergeWordDocuments(buffers, options);
+          const preserveFormatting = options.preserveFormatting === true;
+          const pageBreaks = options.pageBreaks === true;
+          const includeHeaders = options.includeHeaders === true;
+          const includeFooters = options.includeFooters === true;
+          const preserveMetadata = options.preserveMetadata === true;
+          
+          return await WordProcessor.mergeWordDocuments(buffers, {
+            preserveFormatting,
+            pageBreaks,
+            includeHeaders,
+            includeFooters,
+            preserveMetadata,
+          });
         }
         case 'txt': {
           const texts = await Promise.all(files.map(file => file.text()));
-          return await TextProcessor.mergeTextFiles(texts, options);
+          const pageBreaks = options.pageBreaks === true;
+          const includeHeaders = options.includeHeaders === true;
+          const preserveFormatting = options.preserveFormatting === true;
+          
+          return await TextProcessor.mergeTextFiles(texts, {
+            separator: pageBreaks ? '\n\n---PAGE BREAK---\n\n' : '\n\n---\n\n',
+            includeHeaders,
+            preserveFormatting,
+          });
         }
         case 'csv': {
           const texts = await Promise.all(files.map(file => file.text()));
-          return await CSVProcessor.mergeCSVFiles(texts, options);
+          const includeHeaders = options.includeHeaders !== false; // Default true for CSV
+          
+          return await CSVProcessor.mergeCSVFiles(texts, {
+            includeHeaders,
+            skipDuplicateHeaders: true,
+          });
         }
         case 'pptx': {
           return {

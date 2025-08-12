@@ -30,9 +30,18 @@ export class WordProcessor {
       pageBreaks?: boolean;
       includeHeaders?: boolean;
       includeFooters?: boolean;
+      preserveFormatting?: boolean;
     } = {}
   ): Promise<ProcessorResult> {
     try {
+      if (options.preserveFormatting) {
+        // For now, if preserveFormatting is requested, recommend PDF conversion
+        return {
+          success: false,
+          error: 'To preserve original formatting, please convert your DOCX files to PDF first and merge them as PDFs. Direct DOCX merging with full formatting preservation is not yet supported.'
+        };
+      }
+
       const paragraphs: Paragraph[] = [];
       let totalWordCount = 0;
 
@@ -40,56 +49,137 @@ export class WordProcessor {
         const buffer = documents[i];
         
         try {
-          // Extract text using mammoth
-          const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-          const text = result.value;
+          // Try to extract with better formatting preservation
+          const htmlResult = await mammoth.convertToHtml({ arrayBuffer: buffer });
+          const html = htmlResult.value;
           
-          if (i > 0 && options.pageBreaks) {
-            // Add page break before each document (except the first)
-            paragraphs.push(
-              new Paragraph({
-                children: [new TextRun({ text: '', break: 1 })],
-                pageBreakBefore: true,
-              })
-            );
-          }
-
-          // Add document content
-          const lines = text.split('\n');
-          lines.forEach(line => {
-            if (line.trim()) {
+          // If HTML extraction is successful, try to preserve some formatting
+          if (html && html.trim()) {
+            if (i > 0 && options.pageBreaks) {
               paragraphs.push(
                 new Paragraph({
-                  children: [new TextRun(line.trim())],
+                  children: [new TextRun({ text: '', break: 1 })],
+                  pageBreakBefore: true,
                 })
               );
             }
-          });
 
-          totalWordCount += text.split(/\s+/).filter(word => word.length > 0).length;
+            // Add document header if requested
+            if (options.includeHeaders) {
+              paragraphs.push(
+                new Paragraph({
+                  children: [
+                    new TextRun({ 
+                      text: `=== Document ${i + 1} ===`, 
+                      bold: true,
+                      size: 28 // 14pt
+                    })
+                  ],
+                  spacing: { after: 200 },
+                })
+              );
+            }
+
+            // Parse HTML and convert to paragraphs (simplified approach)
+            const textContent = html
+              .replace(/<\/p>/g, '\n\n')
+              .replace(/<br\s*\/?>/g, '\n')
+              .replace(/<[^>]+>/g, '')
+              .replace(/&nbsp;/g, ' ')
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>');
+
+            const lines = textContent.split('\n').filter(line => line.trim());
+            
+            lines.forEach(line => {
+              if (line.trim()) {
+                paragraphs.push(
+                  new Paragraph({
+                    children: [new TextRun(line.trim())],
+                    spacing: { after: 120 }, // Small spacing between lines
+                  })
+                );
+              }
+            });
+
+            totalWordCount += textContent.split(/\s+/).filter(word => word.length > 0).length;
+          } else {
+            // Fallback to plain text extraction
+            const textResult = await mammoth.extractRawText({ arrayBuffer: buffer });
+            const text = textResult.value;
+
+            if (i > 0 && options.pageBreaks) {
+              paragraphs.push(
+                new Paragraph({
+                  children: [new TextRun({ text: '', break: 1 })],
+                  pageBreakBefore: true,
+                })
+              );
+            }
+
+            const lines = text.split('\n');
+            lines.forEach(line => {
+              if (line.trim()) {
+                paragraphs.push(
+                  new Paragraph({
+                    children: [new TextRun(line.trim())],
+                  })
+                );
+              }
+            });
+
+            totalWordCount += text.split(/\s+/).filter(word => word.length > 0).length;
+          }
 
           // Add spacing between documents
           if (i < documents.length - 1) {
             paragraphs.push(
               new Paragraph({
                 children: [new TextRun('')],
+                spacing: { after: 400 }, // Larger spacing between documents
               })
             );
           }
         } catch (error) {
           console.error(`Error processing Word document ${i + 1}:`, error);
+          
+          // Add error notice in the merged document
+          paragraphs.push(
+            new Paragraph({
+              children: [
+                new TextRun({ 
+                  text: `[Error: Could not process document ${i + 1}]`,
+                  italics: true,
+                  color: 'FF0000'
+                })
+              ],
+            })
+          );
           continue;
         }
       }
 
       if (paragraphs.length === 0) {
-        throw new Error('No content found in any document');
+        return {
+          success: false,
+          error: 'No content found in any document'
+        };
       }
 
-      // Create new document
+      // Create new document with better formatting
       const doc = new Document({
         sections: [{
-          properties: {},
+          properties: {
+            page: {
+              margin: {
+                top: 720,  // 0.5 inch
+                right: 720,
+                bottom: 720,
+                left: 720,
+              },
+            },
+          },
           children: paragraphs,
         }],
         ...(options.preserveMetadata && {
@@ -103,7 +193,7 @@ export class WordProcessor {
 
       return {
         success: true,
-        data: docxBuffer,
+        data: docxBuffer.buffer as ArrayBuffer,
         metadata: {
           wordCount: totalWordCount,
           pageCount: Math.ceil(totalWordCount / 250),
