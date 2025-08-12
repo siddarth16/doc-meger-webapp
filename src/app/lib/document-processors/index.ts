@@ -227,6 +227,19 @@ export class DocumentProcessor {
           const text = await doc.file.text();
           const pdfBuffer = await this.convertTextToPDF(text);
           pdfBuffers.push(pdfBuffer);
+        } else if (doc.format === 'csv') {
+          // Convert CSV to PDF
+          const text = await doc.file.text();
+          const formattedText = this.formatCSVForPDF(text);
+          const pdfBuffer = await this.convertTextToPDF(formattedText);
+          pdfBuffers.push(pdfBuffer);
+        } else if (doc.format === 'xlsx') {
+          // Convert Excel to PDF (basic text representation)
+          const buffer = await fileToBuffer(doc.file);
+          const csvData = await ExcelProcessor.convertToCSV(buffer);
+          const formattedText = this.formatCSVForPDF(csvData);
+          const pdfBuffer = await this.convertTextToPDF(formattedText);
+          pdfBuffers.push(pdfBuffer);
         } else {
           // For other formats, throw error for now
           throw new Error(`Conversion from ${doc.format} to PDF not yet supported`);
@@ -254,47 +267,146 @@ export class DocumentProcessor {
       const buffer = await fileToBuffer(file);
       const htmlContent = await WordProcessor.extractHTML(buffer);
       
-      // Convert HTML to PDF using PDF-lib
-      // This is a simplified approach - for better results, we'd need a proper HTML-to-PDF library
-      const text = htmlContent
-        .replace(/<[^>]+>/g, '\n')
-        .replace(/\n\s*\n/g, '\n\n')
+      // Better HTML to text conversion preserving more structure
+      let text = htmlContent
+        // Preserve paragraph breaks
+        .replace(/<\/p>/g, '\n\n')
+        .replace(/<p[^>]*>/g, '')
+        // Preserve line breaks
+        .replace(/<br\s*\/?>/g, '\n')
+        // Preserve headings with better formatting
+        .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '\n\n$1\n\n')
+        // Preserve lists
+        .replace(/<li[^>]*>(.*?)<\/li>/gi, '• $1\n')
+        .replace(/<\/ul>|<\/ol>/g, '\n')
+        .replace(/<ul[^>]*>|<ol[^>]*>/g, '')
+        // Preserve bold formatting indicators
+        .replace(/<(strong|b)[^>]*>(.*?)<\/(strong|b)>/gi, '$2')
+        // Preserve italic formatting indicators  
+        .replace(/<(em|i)[^>]*>(.*?)<\/(em|i)>/gi, '$2')
+        // Clean up remaining HTML tags
+        .replace(/<[^>]+>/g, '')
+        // Clean up HTML entities
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        // Clean up excessive whitespace but preserve intentional spacing
+        .replace(/\n\s*\n\s*\n/g, '\n\n')
         .trim();
+        
+      // If the extracted text is too short, fall back to raw text extraction
+      if (text.length < 100) {
+        const rawText = await WordProcessor.extractText(buffer);
+        text = rawText || text;
+      }
         
       return await this.convertTextToPDF(text);
     } catch (error) {
       console.error('DOCX to PDF conversion error:', error);
-      throw error;
+      // Fallback to basic text extraction
+      try {
+        const buffer = await fileToBuffer(file);
+        const rawText = await WordProcessor.extractText(buffer);
+        return await this.convertTextToPDF(rawText);
+      } catch (fallbackError) {
+        console.error('Fallback DOCX extraction failed:', fallbackError);
+        throw error;
+      }
     }
   }
 
   static async convertTextToPDF(text: string): Promise<ArrayBuffer> {
     try {
-      // Create a simple PDF from text using PDF-lib
+      // Create a better formatted PDF from text using PDF-lib
       const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
       
       const pdfDoc = await PDFDocument.create();
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      
+      // Better page dimensions and margins for script formatting
+      const pageWidth = 612; // US Letter width in points (8.5")
+      const pageHeight = 792; // US Letter height in points (11")
+      const leftMargin = 72; // 1" margin
+      const rightMargin = 72; // 1" margin  
+      const topMargin = 72; // 1" margin
+      const bottomMargin = 72; // 1" margin
+      const contentWidth = pageWidth - leftMargin - rightMargin;
+      
+      const fontSize = 12;
+      const lineHeight = fontSize * 1.4; // 1.4x line spacing for readability
+      const linesPerPage = Math.floor((pageHeight - topMargin - bottomMargin) / lineHeight);
       
       const lines = text.split('\n');
-      const linesPerPage = 50;
-      const lineHeight = 12;
-      const margin = 50;
-      const pageWidth = 595.28; // A4 width in points
-      const pageHeight = 841.89; // A4 height in points
+      const wrappedLines: string[] = [];
       
-      for (let i = 0; i < lines.length; i += linesPerPage) {
+      // Better text wrapping to prevent cutoff
+      lines.forEach(line => {
+        if (!line.trim()) {
+          wrappedLines.push('');
+          return;
+        }
+        
+        const words = line.split(' ');
+        let currentLine = '';
+        
+        words.forEach(word => {
+          const testLine = currentLine ? `${currentLine} ${word}` : word;
+          const textWidth = font.widthOfTextAtSize(testLine, fontSize);
+          
+          if (textWidth <= contentWidth) {
+            currentLine = testLine;
+          } else {
+            if (currentLine) {
+              wrappedLines.push(currentLine);
+              currentLine = word;
+            } else {
+              // Word is too long, split it
+              wrappedLines.push(word.substring(0, 50) + '-');
+              currentLine = word.substring(50);
+            }
+          }
+        });
+        
+        if (currentLine) {
+          wrappedLines.push(currentLine);
+        }
+      });
+      
+      // Create pages with proper formatting
+      for (let i = 0; i < wrappedLines.length; i += linesPerPage) {
         const page = pdfDoc.addPage([pageWidth, pageHeight]);
-        const pageLines = lines.slice(i, i + linesPerPage);
+        const pageLines = wrappedLines.slice(i, i + linesPerPage);
         
         pageLines.forEach((line, index) => {
+          const yPosition = pageHeight - topMargin - (index * lineHeight);
+          
+          // Basic formatting detection
+          const isTitle = line.trim().toUpperCase() === line.trim() && line.trim().length > 0 && line.trim().length < 50;
+          const currentFont = isTitle ? boldFont : font;
+          const currentFontSize = isTitle ? fontSize + 2 : fontSize;
+          
           page.drawText(line, {
-            x: margin,
-            y: pageHeight - margin - (index * lineHeight),
-            size: 10,
-            font,
+            x: leftMargin,
+            y: yPosition,
+            size: currentFontSize,
+            font: currentFont,
             color: rgb(0, 0, 0),
           });
+        });
+        
+        // Add page numbers
+        const pageNumber = Math.floor(i / linesPerPage) + 1;
+        const totalPages = Math.ceil(wrappedLines.length / linesPerPage);
+        page.drawText(`Page ${pageNumber} of ${totalPages}`, {
+          x: pageWidth - rightMargin - 80,
+          y: bottomMargin / 2,
+          size: 10,
+          font,
+          color: rgb(0.5, 0.5, 0.5),
         });
       }
       
@@ -304,6 +416,27 @@ export class DocumentProcessor {
       console.error('Text to PDF conversion error:', error);
       throw error;
     }
+  }
+
+  static formatCSVForPDF(csvText: string): string {
+    const lines = csvText.split('\n');
+    const formattedLines: string[] = [];
+    
+    lines.forEach((line, index) => {
+      if (line.trim()) {
+        // Convert CSV to a more readable table format
+        const cells = line.split(',').map(cell => cell.trim().replace(/"/g, ''));
+        const formattedLine = cells.join(' | ');
+        formattedLines.push(formattedLine);
+        
+        // Add a separator line after the header
+        if (index === 0 && cells.length > 1) {
+          formattedLines.push('-'.repeat(formattedLine.length));
+        }
+      }
+    });
+    
+    return formattedLines.join('\n');
   }
 
   static getSupportedMergeFormats(): DocumentFormat[] {

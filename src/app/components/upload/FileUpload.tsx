@@ -8,11 +8,14 @@ import { useDocumentStore } from '@/app/stores/document-store';
 import { useUIStore } from '@/app/stores/ui-store';
 import { SUPPORTED_FORMATS, MAX_FILE_SIZE } from '@/app/lib/utils/file-utils';
 import { cn } from '@/app/lib/utils/cn';
+import { DocumentOrderModal } from './DocumentOrderModal';
 
 export function FileUpload() {
   const [dragActive, setDragActive] = useState(false);
+  const [showOrderModal, setShowOrderModal] = useState(false);
   const addDocuments = useDocumentStore(state => state.addDocuments);
   const validateFiles = useDocumentStore(state => state.validateFiles);
+  const documents = useDocumentStore(state => state.documents);
   const addNotification = useUIStore(state => state.addNotification);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -33,7 +36,16 @@ export function FileUpload() {
       }
 
       if (valid.length > 0) {
+        const currentDocumentCount = documents.length;
         await addDocuments(valid);
+        
+        // Show ordering modal if we now have multiple documents and added more than 1 file
+        if ((currentDocumentCount + valid.length) > 1 && valid.length > 1) {
+          setTimeout(() => {
+            setShowOrderModal(true);
+          }, 500); // Small delay to let the documents load
+        }
+        
         addNotification({
           type: 'success',
           title: 'Files added successfully',
@@ -48,7 +60,7 @@ export function FileUpload() {
         message: error instanceof Error ? error.message : 'Unknown error occurred',
       });
     }
-  }, [addDocuments, validateFiles, addNotification]);
+  }, [addDocuments, validateFiles, addNotification, documents.length]);
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
@@ -174,6 +186,20 @@ export function FileUpload() {
           </p>
         </div>
       </div>
+
+      {/* Document Ordering Modal */}
+      <DocumentOrderModal
+        isOpen={showOrderModal}
+        onClose={() => setShowOrderModal(false)}
+        onConfirm={() => {
+          setShowOrderModal(false);
+          addNotification({
+            type: 'success',
+            title: 'Document order updated',
+            message: 'Your documents will be merged in the specified order',
+          });
+        }}
+      />
     </div>
   );
 }
