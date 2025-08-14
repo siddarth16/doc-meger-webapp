@@ -2,12 +2,28 @@ import { Document, Packer, Paragraph, TextRun } from 'docx';
 import mammoth from 'mammoth';
 import { DocumentMetadata, ProcessorResult } from '@/app/types';
 
+// Utility function to sanitize text and remove problematic Unicode characters
+function sanitizeText(text: string): string {
+  return text
+    // Remove zero-width characters
+    .replace(/\u200B/g, '') // Zero-width space
+    .replace(/\u200C/g, '') // Zero-width non-joiner
+    .replace(/\u200D/g, '') // Zero-width joiner
+    .replace(/\u2060/g, '') // Word joiner
+    .replace(/\uFEFF/g, '') // Zero-width no-break space (BOM)
+    // Remove other problematic characters
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '') // Control characters
+    // Normalize line breaks
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+}
+
 export class WordProcessor {
   static async analyzeDocument(buffer: ArrayBuffer): Promise<DocumentMetadata> {
     try {
       // Use mammoth to extract basic info
       const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-      const text = result.value;
+      const text = sanitizeText(result.value);
       
       const wordCount = text.split(/\s+/).filter(word => word.length > 0).length;
       const pageCount = Math.ceil(wordCount / 250); // Rough estimate: 250 words per page
@@ -51,7 +67,7 @@ export class WordProcessor {
         try {
           // Try to extract with better formatting preservation
           const htmlResult = await mammoth.convertToHtml({ arrayBuffer: buffer });
-          const html = htmlResult.value;
+          const html = sanitizeText(htmlResult.value);
           
           // If HTML extraction is successful, try to preserve some formatting
           if (html && html.trim()) {
@@ -81,14 +97,14 @@ export class WordProcessor {
             }
 
             // Parse HTML and convert to paragraphs (simplified approach)
-            const textContent = html
+            const textContent = sanitizeText(html
               .replace(/<\/p>/g, '\n\n')
               .replace(/<br\s*\/?>/g, '\n')
               .replace(/<[^>]+>/g, '')
               .replace(/&nbsp;/g, ' ')
               .replace(/&amp;/g, '&')
               .replace(/&lt;/g, '<')
-              .replace(/&gt;/g, '>');
+              .replace(/&gt;/g, '>'));
 
             const lines = textContent.split('\n').filter(line => line.trim());
             
@@ -96,7 +112,7 @@ export class WordProcessor {
               if (line.trim()) {
                 paragraphs.push(
                   new Paragraph({
-                    children: [new TextRun(line.trim())],
+                    children: [new TextRun(sanitizeText(line.trim()))],
                     spacing: { after: 120 }, // Small spacing between lines
                   })
                 );
@@ -107,7 +123,7 @@ export class WordProcessor {
           } else {
             // Fallback to plain text extraction
             const textResult = await mammoth.extractRawText({ arrayBuffer: buffer });
-            const text = textResult.value;
+            const text = sanitizeText(textResult.value);
 
             if (i > 0 && options.pageBreaks) {
               paragraphs.push(
@@ -123,7 +139,7 @@ export class WordProcessor {
               if (line.trim()) {
                 paragraphs.push(
                   new Paragraph({
-                    children: [new TextRun(line.trim())],
+                    children: [new TextRun(sanitizeText(line.trim()))],
                   })
                 );
               }
@@ -212,7 +228,7 @@ export class WordProcessor {
   static async extractText(buffer: ArrayBuffer): Promise<string> {
     try {
       const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-      return result.value;
+      return sanitizeText(result.value);
     } catch (error) {
       console.error('Word text extraction error:', error);
       return '';
@@ -222,7 +238,7 @@ export class WordProcessor {
   static async extractHTML(buffer: ArrayBuffer): Promise<string> {
     try {
       const result = await mammoth.convertToHtml({ arrayBuffer: buffer });
-      return result.value;
+      return sanitizeText(result.value);
     } catch (error) {
       console.error('Word HTML extraction error:', error);
       return '';
@@ -232,7 +248,7 @@ export class WordProcessor {
   static async generatePreview(buffer: ArrayBuffer): Promise<string> {
     try {
       const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-      const text = result.value;
+      const text = sanitizeText(result.value);
       const wordCount = text.split(/\s+/).filter(word => word.length > 0).length;
       
       // Get first few lines as preview
@@ -247,14 +263,15 @@ export class WordProcessor {
   }
 
   static async convertToText(buffer: ArrayBuffer): Promise<string> {
-    return this.extractText(buffer);
+    const text = await this.extractText(buffer);
+    return sanitizeText(text);
   }
 
   static async createFromText(text: string, title?: string): Promise<ArrayBuffer> {
     try {
       const paragraphs = text.split('\n\n').map(paragraph => 
         new Paragraph({
-          children: [new TextRun(paragraph.trim())],
+          children: [new TextRun(sanitizeText(paragraph.trim()))],
         })
       );
 

@@ -1,10 +1,27 @@
 import { DocumentMetadata, ProcessorResult } from '@/app/types';
 
+// Utility function to sanitize text and remove problematic Unicode characters
+function sanitizeText(text: string): string {
+  return text
+    // Remove zero-width characters
+    .replace(/\u200B/g, '') // Zero-width space
+    .replace(/\u200C/g, '') // Zero-width non-joiner
+    .replace(/\u200D/g, '') // Zero-width joiner
+    .replace(/\u2060/g, '') // Word joiner
+    .replace(/\uFEFF/g, '') // Zero-width no-break space (BOM)
+    // Remove other problematic characters
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '') // Control characters
+    // Normalize line breaks
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+}
+
 export class TextProcessor {
   static async analyzeDocument(text: string): Promise<DocumentMetadata> {
     try {
-      const lines = text.split('\n');
-      const words = text.split(/\s+/).filter(word => word.length > 0);
+      const sanitizedText = sanitizeText(text);
+      const lines = sanitizedText.split('\n');
+      const words = sanitizedText.split(/\s+/).filter(word => word.length > 0);
       
       return {
         pageCount: Math.ceil(words.length / 250), // Rough estimate
@@ -45,7 +62,7 @@ export class TextProcessor {
           mergedContent += separator;
         }
         
-        mergedContent += text.trim();
+        mergedContent += sanitizeText(text.trim());
 
         const words = text.split(/\s+/).filter(word => word.length > 0);
         totalWordCount += words.length;
@@ -81,8 +98,9 @@ export class TextProcessor {
 
   static async generatePreview(text: string): Promise<string> {
     try {
-      const lines = text.split('\n');
-      const words = text.split(/\s+/).filter(word => word.length > 0);
+      const sanitizedText = sanitizeText(text);
+      const lines = sanitizedText.split('\n');
+      const words = sanitizedText.split(/\s+/).filter(word => word.length > 0);
       
       const preview = lines.slice(0, 5).join('\n');
       
@@ -219,7 +237,8 @@ export class CSVProcessor extends TextProcessor {
       let headerProcessed = false;
 
       for (const csvText of documents) {
-        const rows = await this.parseCSV(csvText);
+        const sanitizedCsvText = sanitizeText(csvText);
+        const rows = await this.parseCSV(sanitizedCsvText);
         
         if (rows.length === 0) continue;
 

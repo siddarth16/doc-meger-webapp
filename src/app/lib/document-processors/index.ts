@@ -225,7 +225,8 @@ export class DocumentProcessor {
         } else if (doc.format === 'txt') {
           // Convert text to PDF
           const text = await doc.file.text();
-          const pdfBuffer = await this.convertTextToPDF(text);
+          const sanitizedText = this.sanitizeText(text);
+          const pdfBuffer = await this.convertTextToPDF(sanitizedText);
           pdfBuffers.push(pdfBuffer);
         } else if (doc.format === 'csv') {
           // Convert CSV to PDF
@@ -267,8 +268,11 @@ export class DocumentProcessor {
       const buffer = await fileToBuffer(file);
       const htmlContent = await WordProcessor.extractHTML(buffer);
       
+      // Sanitize the HTML content first
+      const sanitizedHTML = this.sanitizeText(htmlContent);
+      
       // Better HTML to text conversion preserving more structure
-      let text = htmlContent
+      let text = sanitizedHTML
         // Preserve paragraph breaks
         .replace(/<\/p>/g, '\n\n')
         .replace(/<p[^>]*>/g, '')
@@ -300,7 +304,10 @@ export class DocumentProcessor {
       // If the extracted text is too short, fall back to raw text extraction
       if (text.length < 100) {
         const rawText = await WordProcessor.extractText(buffer);
-        text = rawText || text;
+        text = this.sanitizeText(rawText) || text;
+      } else {
+        // Always sanitize the final text
+        text = this.sanitizeText(text);
       }
         
       return await this.convertTextToPDF(text);
@@ -310,7 +317,8 @@ export class DocumentProcessor {
       try {
         const buffer = await fileToBuffer(file);
         const rawText = await WordProcessor.extractText(buffer);
-        return await this.convertTextToPDF(rawText);
+        const sanitizedText = this.sanitizeText(rawText);
+        return await this.convertTextToPDF(sanitizedText);
       } catch (fallbackError) {
         console.error('Fallback DOCX extraction failed:', fallbackError);
         throw error;
@@ -320,6 +328,9 @@ export class DocumentProcessor {
 
   static async convertTextToPDF(text: string): Promise<ArrayBuffer> {
     try {
+      // Sanitize the input text first
+      const sanitizedText = this.sanitizeText(text);
+      
       // Create a better formatted PDF from text using PDF-lib
       const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
       
@@ -340,7 +351,7 @@ export class DocumentProcessor {
       const lineHeight = fontSize * 1.4; // 1.4x line spacing for readability
       const linesPerPage = Math.floor((pageHeight - topMargin - bottomMargin) / lineHeight);
       
-      const lines = text.split('\n');
+      const lines = sanitizedText.split('\n');
       const wrappedLines: string[] = [];
       
       // Better text wrapping to prevent cutoff
@@ -418,8 +429,25 @@ export class DocumentProcessor {
     }
   }
 
+  static sanitizeText(text: string): string {
+    // Remove problematic Unicode characters that can't be encoded in WinAnsi
+    return text
+      // Remove zero-width characters
+      .replace(/\u200B/g, '') // Zero-width space
+      .replace(/\u200C/g, '') // Zero-width non-joiner
+      .replace(/\u200D/g, '') // Zero-width joiner
+      .replace(/\u2060/g, '') // Word joiner
+      .replace(/\uFEFF/g, '') // Zero-width no-break space (BOM)
+      // Remove other problematic characters
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '') // Control characters
+      // Normalize line breaks
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+  }
+
   static formatCSVForPDF(csvText: string): string {
-    const lines = csvText.split('\n');
+    const sanitizedText = this.sanitizeText(csvText);
+    const lines = sanitizedText.split('\n');
     const formattedLines: string[] = [];
     
     lines.forEach((line, index) => {
