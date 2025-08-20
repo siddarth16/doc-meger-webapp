@@ -3,6 +3,7 @@
 import { Suspense, lazy } from 'react';
 import { Navigation } from '@/app/components/layout/Navigation';
 import { NotificationCenter } from '@/app/components/layout/NotificationCenter';
+import { HelpModal } from '@/app/components/modals/HelpModal';
 import { useUIStore } from '@/app/stores/ui-store';
 import { useDocumentStore } from '@/app/stores/document-store';
 import { ProcessorPerformanceMonitor, ProcessorPreloader, BundleAnalyzer } from '@/app/components/lazy/LazyDocumentProcessor';
@@ -36,11 +37,17 @@ export default function Home() {
     switch (activeTab) {
       case 'upload':
         return (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Upload Documents</h1>
-              <p className="text-gray-400">
-                Add your documents to get started with merging
+          <div className="space-y-6">
+            {/* Hero Section with Tagline */}
+            <div className="text-center lg:text-left">
+              <h1 className="text-3xl lg:text-4xl font-bold text-text-primary mb-3">
+                Upload Documents
+              </h1>
+              <p className="text-lg text-text-primary mb-2">
+                Combine PDFs, Word docs and spreadsheets into a single file in seconds.
+              </p>
+              <p className="text-text-secondary">
+                Add your documents to get started with merging – everything is processed locally for maximum privacy.
               </p>
             </div>
             
@@ -55,10 +62,10 @@ export default function Home() {
 
       case 'merge':
         return (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Merge Options</h1>
-              <p className="text-gray-400">
+          <div className="space-y-6">
+            <div className="text-center lg:text-left">
+              <h1 className="text-3xl lg:text-4xl font-bold text-text-primary mb-3">Merge Options</h1>
+              <p className="text-lg text-text-secondary">
                 Configure how you want to merge your documents
               </p>
             </div>
@@ -71,10 +78,10 @@ export default function Home() {
 
       case 'preview':
         return (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Preview Documents</h1>
-              <p className="text-gray-400">
+          <div className="space-y-6">
+            <div className="text-center lg:text-left">
+              <h1 className="text-3xl lg:text-4xl font-bold text-text-primary mb-3">Preview Documents</h1>
+              <p className="text-lg text-text-secondary">
                 Preview your documents before merging
               </p>
             </div>
@@ -87,10 +94,10 @@ export default function Home() {
 
       case 'export':
         return (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">Export & Download</h1>
-              <p className="text-gray-400">
+          <div className="space-y-6">
+            <div className="text-center lg:text-left">
+              <h1 className="text-3xl lg:text-4xl font-bold text-text-primary mb-3">Export & Download</h1>
+              <p className="text-lg text-text-secondary">
                 Download your merged documents
               </p>
             </div>
@@ -108,24 +115,30 @@ export default function Home() {
 
   return (
     <ProcessorPerformanceMonitor>
-      <div className="min-h-screen bg-black text-white flex">
+      <div className="min-h-screen bg-background text-text-primary flex flex-col lg:flex-row">
         {/* Processor Preloader - preload based on uploaded document types */}
         <ProcessorPreloader formats={formats} />
         
         {/* Bundle Analyzer for development */}
         <BundleAnalyzer />
         
-        {/* Sidebar Navigation */}
-        <div className="w-80 flex-shrink-0">
-          <Navigation />
-        </div>
+        {/* Navigation */}
+        <Navigation />
 
         {/* Main Content */}
-        <main className="flex-1 p-8 overflow-y-auto">
-          {renderContent()}
+        <main 
+          className="flex-1 p-4 lg:p-8 overflow-y-auto" 
+          role="main"
+          aria-live="polite"
+          aria-label="Main application content"
+        >
+          <div className="max-w-5xl mx-auto">
+            {renderContent()}
+          </div>
         </main>
 
-        {/* Notification Center */}
+        {/* Modals and Overlays */}
+        <HelpModal />
         <NotificationCenter />
 
         {/* Document Preview Modal */}

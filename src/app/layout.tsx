@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerInitializer } from './components/ServiceWorkerInitializer';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,12 +15,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ultimate Document Merger",
-  description: "Merge multiple documents seamlessly - PDF, DOCX, XLSX, TXT, CSV, and more. Fast, secure, and free document processing.",
-  keywords: "document merger, PDF merge, Word merge, Excel merge, file merger, document processing",
-  authors: [{ name: "Ultimate Document Merger" }],
-  viewport: "width=device-width, initial-scale=1",
+  title: "DocMerger - Combine Documents Instantly",
+  description: "Combine PDFs, Word docs and spreadsheets into a single file in seconds. Free, secure, and privacy-focused document processing.",
+  keywords: "document merger, PDF merge, Word merge, Excel merge, file merger, document processing, privacy-focused",
+  authors: [{ name: "DocMerger" }],
   robots: "index, follow",
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" }
+  ]
 };
 
 export default function RootLayout({
@@ -28,17 +38,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
-        <meta name="theme-color" content="#000000" />
         <link rel="manifest" href="/manifest.json" />
         <link rel="apple-touch-icon" href="/logo.svg" />
+        <meta name="color-scheme" content="dark light" />
+        {/* Preload critical fonts */}
+        <link rel="preload" href="/fonts/inter-var.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        suppressHydrationWarning
       >
         <ServiceWorkerInitializer />
-        {children}
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );
