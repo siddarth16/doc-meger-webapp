@@ -1,16 +1,36 @@
 'use client';
 
+import { Suspense, lazy } from 'react';
 import { Navigation } from '@/app/components/layout/Navigation';
 import { NotificationCenter } from '@/app/components/layout/NotificationCenter';
-import { FileUpload } from '@/app/components/upload/FileUpload';
-import { DocumentList } from '@/app/components/upload/DocumentList';
-import { MergeOptions } from '@/app/components/merge/MergeOptions';
-import { DocumentPreview, PreviewList } from '@/app/components/preview/DocumentPreview';
-import { ExportResults } from '@/app/components/export/ExportResults';
 import { useUIStore } from '@/app/stores/ui-store';
+import { useDocumentStore } from '@/app/stores/document-store';
+import { ProcessorPerformanceMonitor, ProcessorPreloader, BundleAnalyzer } from '@/app/components/lazy/LazyDocumentProcessor';
+
+// Lazy load heavy components
+const FileUpload = lazy(() => import('@/app/components/upload/FileUpload').then(m => ({ default: m.FileUpload })));
+const DocumentList = lazy(() => import('@/app/components/upload/DocumentList').then(m => ({ default: m.DocumentList })));
+const MergeOptions = lazy(() => import('@/app/components/merge/MergeOptions').then(m => ({ default: m.MergeOptions })));
+const DocumentPreview = lazy(() => import('@/app/components/preview/DocumentPreview').then(m => ({ default: m.DocumentPreview })));
+const PreviewList = lazy(() => import('@/app/components/preview/DocumentPreview').then(m => ({ default: m.PreviewList })));
+const ExportResults = lazy(() => import('@/app/components/export/ExportResults').then(m => ({ default: m.ExportResults })));
+
+// Loading component
+const ComponentLoader = ({ name }: { name: string }) => (
+  <div className="flex items-center justify-center p-8">
+    <div className="flex items-center space-x-3">
+      <div className="animate-spin rounded-full h-6 w-6 border-2 border-accent border-t-transparent" />
+      <span className="text-gray-400">Loading {name}...</span>
+    </div>
+  </div>
+);
 
 export default function Home() {
   const { activeTab } = useUIStore();
+  const documents = useDocumentStore(state => state.documents);
+  
+  // Get unique formats for preloading
+  const formats = [...new Set(documents.map(doc => doc.format))];
 
   const renderContent = () => {
     switch (activeTab) {
@@ -24,8 +44,12 @@ export default function Home() {
               </p>
             </div>
             
-            <FileUpload />
-            <DocumentList />
+            <Suspense fallback={<ComponentLoader name="File Upload" />}>
+              <FileUpload />
+            </Suspense>
+            <Suspense fallback={<ComponentLoader name="Document List" />}>
+              <DocumentList />
+            </Suspense>
           </div>
         );
 
@@ -39,7 +63,9 @@ export default function Home() {
               </p>
             </div>
             
-            <MergeOptions />
+            <Suspense fallback={<ComponentLoader name="Merge Options" />}>
+              <MergeOptions />
+            </Suspense>
           </div>
         );
 
@@ -53,7 +79,9 @@ export default function Home() {
               </p>
             </div>
             
-            <PreviewList />
+            <Suspense fallback={<ComponentLoader name="Document Previews" />}>
+              <PreviewList />
+            </Suspense>
           </div>
         );
 
@@ -67,7 +95,9 @@ export default function Home() {
               </p>
             </div>
             
-            <ExportResults />
+            <Suspense fallback={<ComponentLoader name="Export Results" />}>
+              <ExportResults />
+            </Suspense>
           </div>
         );
 
@@ -77,22 +107,32 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white flex">
-      {/* Sidebar Navigation */}
-      <div className="w-80 flex-shrink-0">
-        <Navigation />
+    <ProcessorPerformanceMonitor>
+      <div className="min-h-screen bg-black text-white flex">
+        {/* Processor Preloader - preload based on uploaded document types */}
+        <ProcessorPreloader formats={formats} />
+        
+        {/* Bundle Analyzer for development */}
+        <BundleAnalyzer />
+        
+        {/* Sidebar Navigation */}
+        <div className="w-80 flex-shrink-0">
+          <Navigation />
+        </div>
+
+        {/* Main Content */}
+        <main className="flex-1 p-8 overflow-y-auto">
+          {renderContent()}
+        </main>
+
+        {/* Notification Center */}
+        <NotificationCenter />
+
+        {/* Document Preview Modal */}
+        <Suspense fallback={null}>
+          <DocumentPreview />
+        </Suspense>
       </div>
-
-      {/* Main Content */}
-      <main className="flex-1 p-8 overflow-y-auto">
-        {renderContent()}
-      </main>
-
-      {/* Notification Center */}
-      <NotificationCenter />
-
-      {/* Document Preview Modal */}
-      <DocumentPreview />
-    </div>
+    </ProcessorPerformanceMonitor>
   );
 }

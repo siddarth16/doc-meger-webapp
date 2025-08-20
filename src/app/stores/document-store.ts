@@ -7,6 +7,7 @@ import {
   MAX_FILES_BULK 
 } from '@/app/lib/utils/file-utils';
 import { DocumentProcessor } from '@/app/lib/document-processors';
+import { ErrorHandler, DocumentError } from '@/app/lib/utils/error-handler';
 
 interface DocumentStore {
   // State
@@ -14,6 +15,7 @@ interface DocumentStore {
   mergeOptions: MergeOptions;
   currentJob: ProcessingJob | null;
   isProcessing: boolean;
+  urlsToCleanup: Set<string>;
 
   // Actions
   addDocuments: (files: File[]) => Promise<void>;
@@ -35,6 +37,8 @@ interface DocumentStore {
   getSupportedFormats: () => string[];
   validateFiles: (files: File[]) => { valid: File[]; invalid: File[]; errors: string[] };
   getOutputFormat: () => { format: DocumentFormat; reason: string };
+  cleanupUrls: () => void;
+  addUrlToCleanup: (url: string) => void;
 }
 
 const defaultMergeOptions: MergeOptions = {
@@ -54,6 +58,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
   mergeOptions: defaultMergeOptions,
   currentJob: null,
   isProcessing: false,
+  urlsToCleanup: new Set(),
 
   // Actions
   addDocuments: async (files: File[]) => {
@@ -75,6 +80,12 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       const format = getDocumentFormat(file);
       if (!format) continue;
 
+      // Get processing recommendations
+      const recommendations = DocumentProcessor.getProcessingRecommendation(file);
+      if (recommendations.warnings.length > 0) {
+        console.warn(`Processing warnings for ${file.name}:`, recommendations.warnings);
+      }
+
       const documentFile: DocumentFile = {
         id: generateDocumentId(),
         file,
@@ -86,42 +97,142 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
 
       newDocuments.push(documentFile);
 
-      // Analyze document in background
-      DocumentProcessor.analyzeDocument(file, format)
+      // Validate document structure first
+      DocumentProcessor.validateDocument(file, format, {
+        onProgress: (progress) => {
+          set(state => ({
+            documents: state.documents.map(doc =>
+              doc.id === documentFile.id
+                ? { ...doc, progress: progress * 0.2 } // Validation is 20% of total
+                : doc
+            )
+          }));
+        }
+      })
+      .then(validation => {
+        if (!validation.valid) {
+          const error = ErrorHandler.createUserFriendlyError(
+            validation.error || 'File validation failed',
+            'validation'
+          );
+          const errorDetails = ErrorHandler.getErrorDetails(error);
+          
+          set(state => ({
+            documents: state.documents.map(doc =>
+              doc.id === documentFile.id
+                ? { 
+                    ...doc, 
+                    status: 'error' as const, 
+                    error: `${errorDetails.title}: ${errorDetails.message}${errorDetails.userAction ? ' ' + errorDetails.userAction : ''}` 
+                  }
+                : doc
+            )
+          }));
+          return;
+        }
+
+        // Analyze document with progress tracking
+        DocumentProcessor.analyzeDocument(file, format, {
+          onProgress: (progress) => {
+            set(state => ({
+              documents: state.documents.map(doc =>
+                doc.id === documentFile.id
+                  ? { ...doc, progress: 0.2 + (progress * 0.4) } // Analysis is 40% of total (20-60%)
+                  : doc
+              )
+            }));
+          }
+        })
         .then(metadata => {
           set(state => ({
             documents: state.documents.map(doc =>
               doc.id === documentFile.id
-                ? { ...doc, metadata, status: 'processed' as const }
+                ? { ...doc, metadata, progress: 0.6 }
                 : doc
             )
           }));
-        })
-        .catch(error => {
-          console.error('Document analysis failed:', error);
-          set(state => ({
-            documents: state.documents.map(doc =>
-              doc.id === documentFile.id
-                ? { ...doc, status: 'error' as const, error: error.message }
-                : doc
-            )
-          }));
-        });
 
-      // Generate preview
-      DocumentProcessor.generatePreview(file, format)
-        .then(preview => {
+          // Generate preview as final step
+          DocumentProcessor.generatePreview(file, format)
+            .then(preview => {
+              set(state => ({
+                documents: state.documents.map(doc =>
+                  doc.id === documentFile.id
+                    ? { ...doc, preview, status: 'processed' as const, progress: 1.0 }
+                    : doc
+                )
+              }));
+            })
+            .catch(originalError => {
+              const error = ErrorHandler.createUserFriendlyError(originalError, 'preview');
+              const errorDetails = ErrorHandler.getErrorDetails(error);
+              
+              console.error('Preview generation failed:', {
+                file: file.name,
+                error: errorDetails,
+                originalError
+              });
+              
+              // Don't fail the entire document for preview errors
+              set(state => ({
+                documents: state.documents.map(doc =>
+                  doc.id === documentFile.id
+                    ? { 
+                        ...doc, 
+                        status: 'processed' as const, 
+                        progress: 1.0, 
+                        error: `Preview: ${errorDetails.message}` 
+                      }
+                    : doc
+                )
+              }));
+            });
+        })
+        .catch(originalError => {
+          const error = ErrorHandler.createUserFriendlyError(originalError, 'analysis');
+          const errorDetails = ErrorHandler.getErrorDetails(error);
+          
+          console.error('Document analysis failed:', {
+            file: file.name,
+            error: errorDetails,
+            originalError
+          });
+          
           set(state => ({
             documents: state.documents.map(doc =>
               doc.id === documentFile.id
-                ? { ...doc, preview }
+                ? { 
+                    ...doc, 
+                    status: 'error' as const, 
+                    error: `${errorDetails.title}: ${errorDetails.message}${errorDetails.userAction ? ' ' + errorDetails.userAction : ''}` 
+                  }
                 : doc
             )
           }));
-        })
-        .catch(error => {
-          console.error('Preview generation failed:', error);
         });
+      })
+      .catch(originalError => {
+        const error = ErrorHandler.createUserFriendlyError(originalError, 'validation');
+        const errorDetails = ErrorHandler.getErrorDetails(error);
+        
+        console.error('Document validation failed:', {
+          file: file.name,
+          error: errorDetails,
+          originalError
+        });
+        
+        set(state => ({
+          documents: state.documents.map(doc =>
+            doc.id === documentFile.id
+              ? { 
+                  ...doc, 
+                  status: 'error' as const, 
+                  error: `${errorDetails.title}: ${errorDetails.message}${errorDetails.userAction ? ' ' + errorDetails.userAction : ''}` 
+                }
+              : doc
+          )
+        }));
+      });
     }
 
     set(state => ({
@@ -130,13 +241,26 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
   },
 
   removeDocument: (id: string) => {
-    set(state => ({
-      documents: state.documents.filter(doc => doc.id !== id)
-    }));
+    set(state => {
+      const docToRemove = state.documents.find(doc => doc.id === id);
+      if (docToRemove?.preview) {
+        // Clean up preview URL if it's a blob URL
+        if (docToRemove.preview.startsWith('blob:')) {
+          URL.revokeObjectURL(docToRemove.preview);
+          state.urlsToCleanup.delete(docToRemove.preview);
+        }
+      }
+      return {
+        documents: state.documents.filter(doc => doc.id !== id)
+      };
+    });
   },
 
   clearDocuments: () => {
-    set({ documents: [] });
+    const { urlsToCleanup } = get();
+    // Clean up all blob URLs
+    urlsToCleanup.forEach(url => URL.revokeObjectURL(url));
+    set({ documents: [], urlsToCleanup: new Set() });
   },
 
   updateDocument: (id: string, updates: Partial<DocumentFile>) => {
@@ -169,10 +293,16 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
 
   // Processing
   startProcessing: async () => {
-    const { documents, mergeOptions, getOutputFormat } = get();
+    const { documents, mergeOptions, getOutputFormat, updateProgress } = get();
 
     if (documents.length === 0) {
       throw new Error('No documents to process');
+    }
+
+    // Check if all documents are processed
+    const unprocessedDocs = documents.filter(doc => doc.status !== 'processed');
+    if (unprocessedDocs.length > 0) {
+      throw new Error(`${unprocessedDocs.length} document(s) are still being analyzed. Please wait for analysis to complete.`);
     }
 
     // Determine output format automatically
@@ -194,6 +324,8 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
         currentJob: state.currentJob ? { ...state.currentJob, status: 'processing' } : null
       }));
 
+      updateProgress(5); // Initial progress
+
       // Group documents by format for processing
       const documentsByFormat = documents.reduce((acc, doc) => {
         if (!acc[doc.format]) acc[doc.format] = [];
@@ -204,17 +336,26 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       let result;
       const inputFormats = Object.keys(documentsByFormat) as DocumentFormat[];
 
+      // Enhanced progress tracking for different processing types
+      const progressCallback = (progress: number) => {
+        const scaledProgress = 10 + (progress * 80); // Scale to 10-90% range
+        updateProgress(scaledProgress);
+      };
+
       if (outputFormat === 'pdf' && (inputFormats.length > 1 || (inputFormats.length === 1 && inputFormats[0] === 'docx' && documents.length > 1))) {
         // Convert all documents to PDF and merge
         result = await DocumentProcessor.convertAndMergeToPDF(
           documents.map(doc => ({ file: doc.file, format: doc.format })), 
-          mergeOptions as unknown as Record<string, unknown>
+          { ...mergeOptions, onProgress: progressCallback } as unknown as Record<string, unknown>
         );
       } else if (inputFormats.length === 1 && inputFormats[0] === outputFormat) {
         // Single format merge, no conversion needed
         const format = inputFormats[0];
         const files = documentsByFormat[format].map(doc => doc.file);
-        result = await DocumentProcessor.mergeDocuments(files, format, mergeOptions as unknown as Record<string, unknown>);
+        result = await DocumentProcessor.mergeDocuments(files, format, {
+          ...mergeOptions,
+          onProgress: progressCallback
+        } as unknown as Record<string, unknown>);
       } else {
         throw new Error(`Format conversion to ${outputFormat} not yet supported for this combination`);
       }
@@ -234,7 +375,13 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
           type: mimeTypes[outputFormat] || 'application/octet-stream'
         });
         const resultUrl = URL.createObjectURL(blob);
+        
+        // Add URL to cleanup set
+        const { addUrlToCleanup } = get();
+        addUrlToCleanup(resultUrl);
 
+        updateProgress(95);
+        
         set(state => ({
           currentJob: state.currentJob ? {
             ...state.currentJob,
@@ -247,16 +394,26 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
           } : null,
           isProcessing: false,
         }));
+        
+        updateProgress(100);
       } else {
         throw new Error(result.error || 'Processing failed');
       }
-    } catch (error) {
-      console.error('Processing error:', error);
+    } catch (originalError) {
+      const error = ErrorHandler.createUserFriendlyError(originalError, 'processing');
+      const errorDetails = ErrorHandler.getErrorDetails(error);
+      
+      console.error('Processing error:', {
+        documents: documents.map(d => ({ name: d.name, format: d.format })),
+        error: errorDetails,
+        originalError
+      });
+      
       set(state => ({
         currentJob: state.currentJob ? {
           ...state.currentJob,
           status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: `${errorDetails.title}: ${errorDetails.message}${errorDetails.userAction ? ' ' + errorDetails.userAction : ''}`,
         } : null,
         isProcessing: false,
       }));
@@ -264,6 +421,12 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
   },
 
   cancelProcessing: () => {
+    const { currentJob } = get();
+    if (currentJob?.resultUrl && currentJob.resultUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(currentJob.resultUrl);
+      const { urlsToCleanup } = get();
+      urlsToCleanup.delete(currentJob.resultUrl);
+    }
     set({ currentJob: null, isProcessing: false });
   },
 
@@ -284,12 +447,24 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     const errors: string[] = [];
 
     files.forEach(file => {
-      const validation = validateFile(file);
-      if (validation.valid) {
-        valid.push(file);
-      } else {
+      try {
+        const validation = validateFile(file);
+        if (validation.valid) {
+          valid.push(file);
+        } else {
+          invalid.push(file);
+          const error = ErrorHandler.createUserFriendlyError(
+            validation.error || 'File validation failed',
+            'validation'
+          );
+          const errorDetails = ErrorHandler.getErrorDetails(error);
+          errors.push(`${file.name}: ${errorDetails.message}`);
+        }
+      } catch (originalError) {
         invalid.push(file);
-        errors.push(`${file.name}: ${validation.error}`);
+        const error = ErrorHandler.createUserFriendlyError(originalError, 'validation');
+        const errorDetails = ErrorHandler.getErrorDetails(error);
+        errors.push(`${file.name}: ${errorDetails.message}`);
       }
     });
 
@@ -329,4 +504,33 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       reason: 'Mixed document formats will be merged as PDF for compatibility' 
     };
   },
+
+  // URL cleanup utilities
+  cleanupUrls: () => {
+    const { urlsToCleanup } = get();
+    urlsToCleanup.forEach(url => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.warn('Failed to revoke URL:', url, error);
+      }
+    });
+    set(state => ({ ...state, urlsToCleanup: new Set() }));
+  },
+
+  addUrlToCleanup: (url: string) => {
+    set(state => {
+      const newCleanupSet = new Set(state.urlsToCleanup);
+      newCleanupSet.add(url);
+      return { ...state, urlsToCleanup: newCleanupSet };
+    });
+  },
 }));
+
+// Cleanup URLs when the page is unloaded
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    const store = useDocumentStore.getState();
+    store.cleanupUrls();
+  });
+}

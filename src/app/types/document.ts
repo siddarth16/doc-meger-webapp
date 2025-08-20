@@ -7,6 +7,7 @@ export interface DocumentFile {
   size: number;
   format: DocumentFormat;
   status: 'pending' | 'processing' | 'processed' | 'error';
+  progress?: number; // Progress percentage (0-1)
   preview?: string;
   metadata?: DocumentMetadata;
   error?: string;

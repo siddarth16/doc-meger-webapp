@@ -3,11 +3,18 @@ import { PDFProcessor } from './pdf-processor';
 import { ExcelProcessor } from './excel-processor';
 import { WordProcessor } from './word-processor';
 import { TextProcessor, CSVProcessor } from './text-processor';
+import { PowerPointProcessor } from './powerpoint-processor';
 import { fileToBuffer } from '../utils/file-utils';
+import { ChunkProcessor, FileSizeUtils } from '../utils/chunk-processor';
 
 export class DocumentProcessor {
-  static async analyzeDocument(file: File, format: DocumentFormat): Promise<DocumentMetadata> {
+  static async analyzeDocument(
+    file: File, 
+    format: DocumentFormat,
+    options: { onProgress?: (progress: number) => void } = {}
+  ): Promise<DocumentMetadata> {
     try {
+      options.onProgress?.(0.1);
       switch (format) {
         case 'pdf': {
           const buffer = await fileToBuffer(file);
@@ -30,11 +37,11 @@ export class DocumentProcessor {
           return await TextProcessor.analyzeDocument(text);
         }
         case 'pptx': {
-          // Basic analysis for PowerPoint - would need a specialized library for full support
-          return {
-            title: file.name,
-            pageCount: 1, // Placeholder
-          };
+          const buffer = await fileToBuffer(file);
+          options.onProgress?.(0.5);
+          const metadata = await PowerPointProcessor.analyzeDocument(buffer);
+          options.onProgress?.(1.0);
+          return metadata;
         }
         default:
           throw new Error(`Unsupported format for analysis: ${format}`);
@@ -71,7 +78,8 @@ export class DocumentProcessor {
           return await CSVProcessor.generatePreview(text);
         }
         case 'pptx': {
-          return `PowerPoint Presentation\nSize: ${(file.size / 1024 / 1024).toFixed(2)} MB\n\nFull PowerPoint processing requires additional libraries.`;
+          const buffer = await fileToBuffer(file);
+          return await PowerPointProcessor.generatePreview(buffer);
         }
         default:
           return `${(format as string).toUpperCase()} Document\nSize: ${(file.size / 1024 / 1024).toFixed(2)} MB`;
@@ -140,10 +148,16 @@ export class DocumentProcessor {
           });
         }
         case 'pptx': {
-          return {
-            success: false,
-            error: 'PowerPoint merging requires additional libraries. Please convert to PDF first.'
-          };
+          const buffers = await Promise.all(files.map(file => fileToBuffer(file)));
+          const preserveFormatting = options.preserveFormatting === true;
+          const preserveMetadata = options.preserveMetadata === true;
+          
+          return await PowerPointProcessor.mergePowerPointPresentations(buffers, {
+            preserveFormatting,
+            preserveMetadata,
+            slideTransitions: true,
+            includeMasterSlides: false,
+          });
         }
         default:
           return {
@@ -208,12 +222,15 @@ export class DocumentProcessor {
 
   static async convertAndMergeToPDF(
     documents: { file: File; format: DocumentFormat }[],
-    options: Record<string, unknown> = {}
+    options: Record<string, unknown> & { onProgress?: (progress: number) => void } = {}
   ): Promise<ProcessorResult> {
     try {
       const pdfBuffers: ArrayBuffer[] = [];
+      const totalFiles = documents.length;
+      let processedFiles = 0;
       
       for (const doc of documents) {
+        options.onProgress?.((processedFiles / totalFiles) * 0.8); // Reserve 20% for final merge
         if (doc.format === 'pdf') {
           // Already PDF, just add the buffer
           const buffer = await fileToBuffer(doc.file);
@@ -241,17 +258,29 @@ export class DocumentProcessor {
           const formattedText = this.formatCSVForPDF(csvData);
           const pdfBuffer = await this.convertTextToPDF(formattedText);
           pdfBuffers.push(pdfBuffer);
+        } else if (doc.format === 'pptx') {
+          // Convert PowerPoint to PDF via text extraction
+          const buffer = await fileToBuffer(doc.file);
+          const text = await PowerPointProcessor.extractText(buffer);
+          const sanitizedText = this.sanitizeText(text);
+          const pdfBuffer = await this.convertTextToPDF(sanitizedText);
+          pdfBuffers.push(pdfBuffer);
         } else {
           // For other formats, throw error for now
           throw new Error(`Conversion from ${doc.format} to PDF not yet supported`);
         }
+        
+        processedFiles++;
       }
       
       // Merge all PDF buffers
-      return await PDFProcessor.mergePDFs(pdfBuffers, {
+      options.onProgress?.(0.9);
+      const result = await PDFProcessor.mergePDFs(pdfBuffers, {
         preserveMetadata: options.preserveMetadata === true,
         includeBookmarks: options.preserveFormatting === true,
       });
+      options.onProgress?.(1.0);
+      return result;
       
     } catch (error) {
       console.error('Convert and merge to PDF error:', error);
@@ -468,17 +497,84 @@ export class DocumentProcessor {
   }
 
   static getSupportedMergeFormats(): DocumentFormat[] {
-    return ['pdf', 'docx', 'xlsx', 'txt', 'csv'];
+    return ['pdf', 'docx', 'xlsx', 'txt', 'csv', 'pptx'];
   }
 
   static getSupportedConversions(): Record<DocumentFormat, DocumentFormat[]> {
     return {
       pdf: [],
       docx: ['txt', 'pdf'],
-      xlsx: ['csv'],
-      pptx: [],
+      xlsx: ['csv', 'pdf'],
+      pptx: ['txt', 'pdf'],
       txt: ['pdf'],
-      csv: []
+      csv: ['pdf']
+    };
+  }
+
+  /**
+   * Validate document structure before processing
+   */
+  static async validateDocument(
+    file: File, 
+    format: DocumentFormat,
+    options: { onProgress?: (progress: number) => void } = {}
+  ): Promise<{ valid: boolean; error?: string }> {
+    try {
+      const buffer = await fileToBuffer(file);
+      options.onProgress?.(0.3);
+      
+      switch (format) {
+        case 'pdf':
+          return await PDFProcessor.validatePDFStructure(buffer);
+        case 'pptx':
+          return await PowerPointProcessor.validatePowerPointStructure(buffer);
+        case 'docx':
+        case 'xlsx':
+        case 'txt':
+        case 'csv':
+          // Basic validation - check if file is not empty and readable
+          if (buffer.byteLength === 0) {
+            return { valid: false, error: 'File is empty' };
+          }
+          return { valid: true };
+        default:
+          return { valid: false, error: `Unsupported format: ${format}` };
+      }
+    } catch (error) {
+      return {
+        valid: false,
+        error: `Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    } finally {
+      options.onProgress?.(1.0);
+    }
+  }
+
+  /**
+   * Get recommended processing approach based on file size and format
+   */
+  static getProcessingRecommendation(file: File): {
+    useChunkedProcessing: boolean;
+    estimatedTime: number;
+    memoryImpact: 'low' | 'medium' | 'high';
+    warnings: string[];
+  } {
+    const warnings: string[] = [];
+    const isLargeFile = FileSizeUtils.isLargeFile(file, 10);
+    const isVeryLargeFile = FileSizeUtils.isLargeFile(file, 50);
+    
+    if (isVeryLargeFile) {
+      warnings.push('Very large file detected. Processing may take several minutes.');
+      warnings.push('Consider splitting the file or using a more powerful device.');
+    } else if (isLargeFile) {
+      warnings.push('Large file detected. Processing may take extra time.');
+    }
+
+    return {
+      useChunkedProcessing: isLargeFile,
+      estimatedTime: ChunkProcessor.estimateProcessingTime(file),
+      memoryImpact: isVeryLargeFile ? 'high' : isLargeFile ? 'medium' : 'low',
+      warnings
     };
   }
 }
@@ -487,3 +583,4 @@ export * from './pdf-processor';
 export * from './excel-processor';
 export * from './word-processor';
 export * from './text-processor';
+export * from './powerpoint-processor';

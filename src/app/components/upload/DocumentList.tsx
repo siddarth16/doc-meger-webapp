@@ -157,6 +157,9 @@ export function DocumentList({ className }: DocumentListProps) {
                   {document.metadata?.pageCount && (
                     <span>{document.metadata.pageCount} pages</span>
                   )}
+                  {document.metadata?.slideCount && (
+                    <span>{document.metadata.slideCount} slides</span>
+                  )}
                   {document.metadata?.wordCount && (
                     <span>{document.metadata.wordCount.toLocaleString()} words</span>
                   )}
@@ -172,12 +175,13 @@ export function DocumentList({ className }: DocumentListProps) {
 
               {/* Actions */}
               <div className="flex items-center space-x-2">
-                {document.preview && (
+                {document.status === 'processed' && document.preview && (
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => openPreview(document)}
                     className="text-accent hover:text-accent/80"
+                    title="Preview document"
                   >
                     <EyeIcon className="h-4 w-4" />
                   </Button>
@@ -188,6 +192,7 @@ export function DocumentList({ className }: DocumentListProps) {
                   size="sm"
                   onClick={() => removeDocument(document.id)}
                   className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                  title="Remove document"
                 >
                   <TrashIcon className="h-4 w-4" />
                 </Button>
@@ -195,9 +200,27 @@ export function DocumentList({ className }: DocumentListProps) {
             </div>
 
             {/* Processing Progress */}
-            {document.status === 'processing' && (
-              <div className="mt-3 bg-muted rounded-full h-2">
-                <div className="bg-accent h-2 rounded-full transition-all duration-300 animate-pulse w-1/2" />
+            {(document.status === 'processing' || document.status === 'pending') && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-400">
+                    {document.status === 'pending' ? 'Analyzing...' : 'Processing...'}
+                  </span>
+                  {document.progress !== undefined && (
+                    <span className="text-xs text-gray-400">
+                      {(document.progress * 100).toFixed(0)}%
+                    </span>
+                  )}
+                </div>
+                <div className="bg-muted/50 rounded-full h-1.5">
+                  <div 
+                    className="bg-accent h-1.5 rounded-full transition-all duration-300"
+                    style={{ 
+                      width: document.progress ? `${(document.progress * 100)}%` : '30%',
+                      ...(document.progress === undefined && { animationName: 'pulse' })
+                    }}
+                  />
+                </div>
               </div>
             )}
           </div>
