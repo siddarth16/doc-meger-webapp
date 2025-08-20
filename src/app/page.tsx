@@ -7,6 +7,7 @@ import { HelpModal } from '@/app/components/modals/HelpModal';
 import { useUIStore } from '@/app/stores/ui-store';
 import { useDocumentStore } from '@/app/stores/document-store';
 import { ProcessorPerformanceMonitor, ProcessorPreloader, BundleAnalyzer } from '@/app/components/lazy/LazyDocumentProcessor';
+import { ThemeProvider } from '@/app/contexts/ThemeContext';
 
 // Lazy load heavy components
 const FileUpload = lazy(() => import('@/app/components/upload/FileUpload').then(m => ({ default: m.FileUpload })));
@@ -114,38 +115,40 @@ export default function Home() {
   };
 
   return (
-    <ProcessorPerformanceMonitor>
-      <div className="min-h-screen bg-background text-text-primary flex flex-col lg:flex-row">
-        {/* Processor Preloader - preload based on uploaded document types */}
-        <ProcessorPreloader formats={formats} />
-        
-        {/* Bundle Analyzer for development */}
-        <BundleAnalyzer />
-        
-        {/* Navigation */}
-        <Navigation />
+    <ThemeProvider>
+      <ProcessorPerformanceMonitor>
+        <div className="min-h-screen bg-background text-text-primary flex flex-col lg:flex-row">
+          {/* Processor Preloader - preload based on uploaded document types */}
+          <ProcessorPreloader formats={formats} />
+          
+          {/* Bundle Analyzer for development */}
+          <BundleAnalyzer />
+          
+          {/* Navigation */}
+          <Navigation />
 
-        {/* Main Content */}
-        <main 
-          className="flex-1 p-4 lg:p-8 overflow-y-auto" 
-          role="main"
-          aria-live="polite"
-          aria-label="Main application content"
-        >
-          <div className="max-w-5xl mx-auto">
-            {renderContent()}
-          </div>
-        </main>
+          {/* Main Content */}
+          <main 
+            className="flex-1 p-4 lg:p-8 overflow-y-auto" 
+            role="main"
+            aria-live="polite"
+            aria-label="Main application content"
+          >
+            <div className="max-w-5xl mx-auto">
+              {renderContent()}
+            </div>
+          </main>
 
-        {/* Modals and Overlays */}
-        <HelpModal />
-        <NotificationCenter />
+          {/* Modals and Overlays */}
+          <HelpModal />
+          <NotificationCenter />
 
-        {/* Document Preview Modal */}
-        <Suspense fallback={null}>
-          <DocumentPreview />
-        </Suspense>
-      </div>
-    </ProcessorPerformanceMonitor>
+          {/* Document Preview Modal */}
+          <Suspense fallback={null}>
+            <DocumentPreview />
+          </Suspense>
+        </div>
+      </ProcessorPerformanceMonitor>
+    </ThemeProvider>
   );
 }

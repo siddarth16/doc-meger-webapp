@@ -74,7 +74,7 @@ export function ThemeProvider({ children, defaultTheme = 'dark' }: ThemeProvider
   // Prevent hydration mismatch
   if (!mounted) {
     return (
-      <div style={{ visibility: 'hidden' }}>
+      <div style={{ visibility: 'hidden' }} className="min-h-screen bg-black">
         {children}
       </div>
     );
