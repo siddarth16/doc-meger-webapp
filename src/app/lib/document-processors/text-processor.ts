@@ -1,19 +1,55 @@
 import { DocumentMetadata, ProcessorResult } from '@/app/types';
 
-// Utility function to sanitize text and remove problematic Unicode characters
+// Utility function to sanitize text and remove problematic Unicode characters for WinAnsi compatibility
 function sanitizeText(text: string): string {
+  if (!text) return '';
+  
+  // Comprehensive sanitization for WinAnsi encoding compatibility
   return text
+    // Replace tab characters with spaces (main issue from error logs)
+    .replace(/\t/g, '    ') // Replace tabs with 4 spaces
+    .replace(/\u0009/g, '    ') // Explicit tab character replacement
+    
     // Remove zero-width characters
     .replace(/\u200B/g, '') // Zero-width space
     .replace(/\u200C/g, '') // Zero-width non-joiner
     .replace(/\u200D/g, '') // Zero-width joiner
     .replace(/\u2060/g, '') // Word joiner
     .replace(/\uFEFF/g, '') // Zero-width no-break space (BOM)
-    // Remove other problematic characters
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '') // Control characters
-    // Normalize line breaks
+    
+    // Replace common Unicode characters with WinAnsi equivalents
+    .replace(/[\u2013\u2014]/g, '-') // En dash, Em dash → hyphen
+    .replace(/[\u2018\u2019]/g, "'") // Left/right single quote → apostrophe
+    .replace(/[\u201C\u201D]/g, '"') // Left/right double quote → quote
+    .replace(/\u2026/g, '...') // Ellipsis → three dots
+    .replace(/\u2022/g, '•') // Bullet point
+    .replace(/\u00A0/g, ' ') // Non-breaking space → regular space
+    
+    // Remove other problematic control characters (but preserve \n)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '')
+    
+    // Replace characters outside WinAnsi range (128-255 for extended ASCII)
+    .replace(/[^\u0000-\u00FF]/g, (match) => {
+      // Try to find ASCII equivalents for common characters
+      const charCode = match.charCodeAt(0);
+      if (charCode > 255) {
+        // Return empty string or ASCII equivalent
+        switch (match) {
+          case '\u20AC': return 'EUR'; // Euro symbol
+          case '\u00A3': return 'GBP'; // Pound symbol
+          case '\u00A5': return 'YEN'; // Yen symbol
+          default: return ''; // Remove unknown high Unicode characters
+        }
+      }
+      return match;
+    })
+    
+    // Normalize line breaks and clean up extra whitespace
     .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n');
+    .replace(/\r/g, '\n')
+    .replace(/\n{3,}/g, '\n\n') // Limit consecutive newlines
+    .replace(/[ \t]+$/gm, '') // Remove trailing spaces/tabs on each line
+    .trim();
 }
 
 export class TextProcessor {
