@@ -6,14 +6,11 @@ import {
   EyeIcon,
   ArrowDownTrayIcon,
   QuestionMarkCircleIcon,
-  SunIcon,
-  MoonIcon,
   Bars3Icon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
 import { useUIStore } from '@/app/stores/ui-store';
 import { useDocumentStore } from '@/app/stores/document-store';
-import { useTheme } from '@/app/contexts/ThemeContext';
 import { Tooltip } from '@/app/components/ui/Tooltip';
 import { Button } from '@/app/components/ui/Button';
 import { cn } from '@/app/lib/utils/cn';
@@ -53,7 +50,6 @@ const navigationItems = [
 export function Navigation() {
   const { activeTab, setActiveTab, openHelp } = useUIStore();
   const { documents } = useDocumentStore();
-  const { theme, toggleTheme } = useTheme();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const getTabStatus = (tabId: typeof activeTab) => {
@@ -111,20 +107,6 @@ export function Navigation() {
           <span className="text-sm text-text-secondary">Step {navigationItems.findIndex(item => item.id === activeTab) + 1} of {navigationItems.length}</span>
         </div>
         <div className="flex items-center space-x-2">
-          <Tooltip content={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleTheme}
-              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-              className="p-2"
-            >
-              {theme === 'dark' ? 
-                <SunIcon className="h-5 w-5" /> : 
-                <MoonIcon className="h-5 w-5" />
-              }
-            </Button>
-          </Tooltip>
           <Button
             variant="ghost"
             size="sm"
@@ -149,25 +131,9 @@ export function Navigation() {
         <div className="p-4 h-full flex flex-col">
           {/* Desktop Header */}
           <div className="hidden lg:block mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-bold text-text-primary mb-1">DocMerger</h2>
-                <p className="text-sm text-text-secondary">Document Processing Pipeline</p>
-              </div>
-              <Tooltip content={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleTheme}
-                  aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-                  className="p-2"
-                >
-                  {theme === 'dark' ? 
-                    <SunIcon className="h-5 w-5" /> : 
-                    <MoonIcon className="h-5 w-5" />
-                  }
-                </Button>
-              </Tooltip>
+            <div>
+              <h2 className="text-xl font-bold text-text-primary mb-1">DocMerger</h2>
+              <p className="text-sm text-text-secondary">Document Processing Pipeline</p>
             </div>
           </div>
 
