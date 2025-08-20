@@ -63,13 +63,7 @@ export class PowerPointProcessor {
   }
 
   static async mergePowerPointPresentations(
-    documents: ArrayBuffer[],
-    _options: {
-      preserveMetadata?: boolean;
-      preserveFormatting?: boolean;
-      slideTransitions?: boolean;
-      includeMasterSlides?: boolean;
-    } = {}
+    documents: ArrayBuffer[]
   ): Promise<ProcessorResult> {
     try {
       // For now, PowerPoint merging will extract text content and merge as a text-based format

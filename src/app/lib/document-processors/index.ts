@@ -149,15 +149,7 @@ export class DocumentProcessor {
         }
         case 'pptx': {
           const buffers = await Promise.all(files.map(file => fileToBuffer(file)));
-          const preserveFormatting = options.preserveFormatting === true;
-          const preserveMetadata = options.preserveMetadata === true;
-          
-          return await PowerPointProcessor.mergePowerPointPresentations(buffers, {
-            preserveFormatting,
-            preserveMetadata,
-            slideTransitions: true,
-            includeMasterSlides: false,
-          });
+          return await PowerPointProcessor.mergePowerPointPresentations(buffers);
         }
         default:
           return {

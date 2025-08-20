@@ -56,10 +56,11 @@ export function ProcessorPerformanceMonitor({ children }: { children: ReactNode 
         }
         
         if (entry.entryType === 'resource' && entry.name.includes('doc-processors')) {
+          const resourceEntry = entry as PerformanceResourceTiming;
           console.debug('Processor chunk loaded:', {
-            name: entry.name,
-            duration: entry.duration,
-            size: entry.transferSize,
+            name: resourceEntry.name,
+            duration: resourceEntry.duration,
+            size: resourceEntry.transferSize,
           });
         }
       });
