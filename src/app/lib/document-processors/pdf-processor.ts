@@ -5,8 +5,13 @@ import { FileSizeUtils } from '@/app/lib/utils/chunk-processor';
 // Dynamically import pdf-parse to avoid SSR issues
 const getPdfParse = async () => {
   if (typeof window !== 'undefined') {
-    const pdfParse = await import('pdf-parse/lib/pdf-parse.js');
-    return pdfParse.default;
+    try {
+      const pdfParse = await import('pdf-parse');
+      return pdfParse.default;
+    } catch (error) {
+      console.warn('pdf-parse not available:', error);
+      return null;
+    }
   }
   return null;
 };
