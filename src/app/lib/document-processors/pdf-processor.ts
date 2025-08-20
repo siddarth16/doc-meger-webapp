@@ -1,6 +1,6 @@
 import { PDFDocument } from 'pdf-lib';
 import { DocumentMetadata, ProcessorResult } from '@/app/types';
-import { ChunkProcessor, FileSizeUtils } from '@/app/lib/utils/chunk-processor';
+import { FileSizeUtils } from '@/app/lib/utils/chunk-processor';
 
 // Dynamically import pdf-parse to avoid SSR issues
 const getPdfParse = async () => {

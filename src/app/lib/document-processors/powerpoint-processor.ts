@@ -36,7 +36,7 @@ export class PowerPointProcessor {
       
       // Count total text content for word count estimation
       let totalText = '';
-      slides.forEach((slide: any) => {
+      slides.forEach((slide: { title?: string; text?: string; bullets?: string[] }) => {
         if (slide.text) {
           totalText += slide.text + ' ';
         }
@@ -64,7 +64,7 @@ export class PowerPointProcessor {
 
   static async mergePowerPointPresentations(
     documents: ArrayBuffer[],
-    options: {
+    _options: {
       preserveMetadata?: boolean;
       preserveFormatting?: boolean;
       slideTransitions?: boolean;
@@ -97,7 +97,7 @@ export class PowerPointProcessor {
             mergedContent += `\n\n=== Document ${docIndex + 1} ===\n\n`;
           }
 
-          slides.forEach((slideData: any, slideIndex: number) => {
+          slides.forEach((slideData: { title?: string; text?: string; bullets?: string[] }, slideIndex: number) => {
             mergedContent += `\n--- Slide ${slideIndex + 1} ---\n`;
             
             if (slideData.title) {
@@ -165,7 +165,7 @@ export class PowerPointProcessor {
       const slides = result.slides || [];
       
       let allText = '';
-      slides.forEach((slide: any, index: number) => {
+      slides.forEach((slide: { title?: string; text?: string; bullets?: string[] }, index: number) => {
         allText += `\n--- Slide ${index + 1} ---\n`;
         if (slide.title) {
           allText += `Title: ${slide.title}\n`;

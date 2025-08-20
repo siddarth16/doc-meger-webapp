@@ -7,7 +7,7 @@ import {
   MAX_FILES_BULK 
 } from '@/app/lib/utils/file-utils';
 import { DocumentProcessor } from '@/app/lib/document-processors';
-import { ErrorHandler, DocumentError } from '@/app/lib/utils/error-handler';
+import { ErrorHandler } from '@/app/lib/utils/error-handler';
 
 interface DocumentStore {
   // State

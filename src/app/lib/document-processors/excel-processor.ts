@@ -21,7 +21,6 @@ export class ExcelProcessor {
       const sheetNames = workbook.SheetNames;
       let totalRows = 0;
       let totalCells = 0;
-      let hasFormulas = false;
       
       // Analyze each sheet
       sheetNames.forEach(name => {
@@ -32,13 +31,6 @@ export class ExcelProcessor {
           const sheetCols = range.e.c + 1;
           totalRows += sheetRows;
           totalCells += sheetRows * sheetCols;
-          
-          // Check for formulas (basic detection)
-          Object.keys(sheet).forEach(cell => {
-            if (cell[0] !== '!' && sheet[cell].f) {
-              hasFormulas = true;
-            }
-          });
         }
       });
 
@@ -250,16 +242,12 @@ export class ExcelProcessor {
       });
       
       const sheetNames = workbook.SheetNames;
-      let totalCells = 0;
       let hasFormulas = false;
       
       // Quick analysis
       sheetNames.forEach(name => {
         const sheet = workbook.Sheets[name];
         if (sheet['!ref']) {
-          const range = XLSX.utils.decode_range(sheet['!ref']);
-          totalCells += (range.e.r + 1) * (range.e.c + 1);
-          
           // Check for formulas
           if (!hasFormulas) {
             Object.keys(sheet).some(cell => {
@@ -310,7 +298,7 @@ export class ExcelProcessor {
               preview += '...\n';
             }
           }
-        } catch (sheetError) {
+        } catch {
           preview += `Preview of "${sheetNames[0]}": Content preview not available\n`;
         }
       }

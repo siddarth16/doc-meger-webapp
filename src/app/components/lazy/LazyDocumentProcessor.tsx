@@ -1,32 +1,9 @@
 'use client';
 
-import { lazy, Suspense, ReactNode } from 'react';
+import { ReactNode } from 'react';
 import { DocumentFormat } from '@/app/types';
 
-// Lazy load heavy document processing components
-const LazyPDFProcessor = lazy(() => 
-  import('@/app/lib/document-processors/pdf-processor').then(() => ({
-    default: () => <div>PDF Processor Loaded</div>
-  }))
-);
-
-const LazyWordProcessor = lazy(() => 
-  import('@/app/lib/document-processors/word-processor').then(() => ({
-    default: () => <div>Word Processor Loaded</div>
-  }))
-);
-
-const LazyExcelProcessor = lazy(() => 
-  import('@/app/lib/document-processors/excel-processor').then(() => ({
-    default: () => <div>Excel Processor Loaded</div>
-  }))
-);
-
-const LazyPowerPointProcessor = lazy(() => 
-  import('@/app/lib/document-processors/powerpoint-processor').then(() => ({
-    default: () => <div>PowerPoint Processor Loaded</div>
-  }))
-);
+// Lazy loading components removed as they're loaded on-demand through dynamic imports
 
 interface LazyProcessorProps {
   format: DocumentFormat;
@@ -34,16 +11,7 @@ interface LazyProcessorProps {
   fallback?: ReactNode;
 }
 
-const ProcessorFallback = ({ format }: { format: DocumentFormat }) => (
-  <div className="flex items-center justify-center p-4">
-    <div className="flex items-center space-x-2">
-      <div className="animate-spin rounded-full h-4 w-4 border-2 border-accent border-t-transparent" />
-      <span className="text-sm text-gray-400">
-        Loading {format.toUpperCase()} processor...
-      </span>
-    </div>
-  </div>
-);
+// Processor fallback component removed - using inline fallbacks
 
 export function LazyDocumentProcessor({ children }: LazyProcessorProps) {
   // For now, just return children as the processors are loaded on-demand
